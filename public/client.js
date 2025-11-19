@@ -1,8 +1,4 @@
-// Use environment variable or default to current host
-const SOCKET_URL = window.location.hostname === 'localhost'
-    ? 'http://localhost:3000'
-    : (window.BACKEND_URL || window.location.origin);
-const socket = io(SOCKET_URL);
+const socket = io();
 
 const loginScreen = document.getElementById('login-screen');
 const gameContainer = document.getElementById('game-container');

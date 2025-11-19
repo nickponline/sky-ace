@@ -2,12 +2,22 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const Game = require('./game');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
 
-app.use(express.static('public'));
+// Configure Socket.IO with CORS for Vercel
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    },
+    transports: ['websocket', 'polling']
+});
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, '../public')));
 
 const game = new Game();
 
@@ -43,6 +53,15 @@ setInterval(() => {
 }, 1000 / FPS);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+    server.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}
+
+// Export for Vercel
+module.exports = app;
+module.exports.io = io;
+module.exports.server = server;
