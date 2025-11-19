@@ -14,12 +14,12 @@ class Game {
         this.maxRicochets = 2;
 
         // Tuned for faster gameplay
-        this.ACCELERATION = 0.4;
-        this.MAX_SPEED = 6;
+        this.ACCELERATION = 0.2;
+        this.MAX_SPEED = 3;
         this.FRICTION = 0.92;
 
-        this.ROTATION_ACCEL = 0.01;
-        this.MAX_ROTATION_SPEED = 0.12;
+        this.ROTATION_ACCEL = 0.005;
+        this.MAX_ROTATION_SPEED = 0.06;
         this.ROTATION_FRICTION = 0.90;
 
         this.initObstacles();
