@@ -1,381 +1,227 @@
-import { GAME_CONFIG, POWERUP_TYPES, WEAPON_TYPES } from '../shared/constants.js';
-
-export class Game {
+class Game {
     constructor() {
-        this.players = new Map();
-        this.projectiles = [];
-        this.powerups = [];
+        this.players = {};
+        this.shells = [];
         this.obstacles = [];
-        this.nextPlayerId = 1;
-        this.nextProjectileId = 1;
-        this.nextPowerupId = 1;
+        this.width = 800;
+        this.height = 600;
+        this.shellSpeed = 8;
+        this.tankSpeed = 3;
+        this.rotationSpeed = 0.05;
+        this.tankSize = 30; // Treated as diameter for collision
+        this.shellSize = 5; // Radius
+        this.maxRicochets = 2;
 
-        // Create some static obstacles
-        this.createObstacles();
-
-        // Spawn powerups periodically
-        setInterval(() => this.spawnPowerup(), 10000);
+        this.initObstacles();
     }
 
-    createObstacles() {
-        // Create some platforms/obstacles in the arena
-        const obstacleConfigs = [
-            { x: 500, y: 300, width: 100, height: 20 },
-            { x: 1500, y: 600, width: 100, height: 20 },
-            { x: 1000, y: 900, width: 150, height: 20 },
-            { x: 300, y: 800, width: 80, height: 20 },
-            { x: 1700, y: 400, width: 120, height: 20 },
-        ];
-
-        this.obstacles = obstacleConfigs.map(config => ({
-            ...config,
-            type: 'platform'
-        }));
+    initObstacles() {
+        this.obstacles.push({ x: 100, y: 100, w: 50, h: 200 });
+        this.obstacles.push({ x: 650, y: 100, w: 50, h: 200 });
+        this.obstacles.push({ x: 300, y: 300, w: 200, h: 50 });
+        this.obstacles.push({ x: 100, y: 500, w: 600, h: 50 });
+        // Add border walls
+        this.obstacles.push({ x: -50, y: 0, w: 50, h: this.height }); // Left
+        this.obstacles.push({ x: this.width, y: 0, w: 50, h: this.height }); // Right
+        this.obstacles.push({ x: 0, y: -50, w: this.width, h: 50 }); // Top
+        this.obstacles.push({ x: 0, y: this.height, w: this.width, h: 50 }); // Bottom
     }
 
-    spawnPowerup() {
-        if (this.powerups.length >= 5) return; // Max 5 powerups at once
-
-        const types = Object.values(POWERUP_TYPES);
-        const type = types[Math.floor(Math.random() * types.length)];
-
-        this.powerups.push({
-            id: this.nextPowerupId++,
-            type,
-            x: Math.random() * (GAME_CONFIG.ARENA_WIDTH - 100) + 50,
-            y: Math.random() * (GAME_CONFIG.ARENA_HEIGHT - 100) + 50,
-            collected: false,
-        });
-    }
-
-    addPlayer(socketId, username) {
-        const id = this.nextPlayerId++;
-        const player = {
-            id,
-            socketId,
-            username,
-            x: Math.random() * GAME_CONFIG.ARENA_WIDTH,
-            y: GAME_CONFIG.ARENA_HEIGHT / 2,
-            vx: 150, // Start with forward velocity
-            vy: 0,
-            angle: 0, // Face right (0 radians)
-            health: GAME_CONFIG.PLAYER_HEALTH,
+    addPlayer(id, name) {
+        const spawn = this.getSafeSpawn();
+        this.players[id] = {
+            id: id,
+            name: name || `Player ${Object.keys(this.players).length + 1}`,
+            x: spawn.x,
+            y: spawn.y,
+            angle: Math.random() * Math.PI * 2,
+            radius: this.tankSize / 2,
+            color: this.getRandomColor(),
             score: 0,
-            alive: true,
-            weapon: WEAPON_TYPES.NORMAL,
-            weaponTimer: 0,
-            shielded: false,
-            shieldTimer: 0,
-            lastFireTime: 0,
-            respawnTimer: 0,
+            cooldown: 0
         };
-
-        this.players.set(socketId, player);
-        return player;
     }
 
-    removePlayer(socketId) {
-        this.players.delete(socketId);
-    }
+    getSafeSpawn() {
+        let safe = false;
+        let x, y;
+        let attempts = 0;
+        while (!safe && attempts < 100) {
+            x = Math.random() * (this.width - 100) + 50;
+            y = Math.random() * (this.height - 100) + 50;
+            safe = true;
 
-    handleInput(socketId, input) {
-        const player = this.players.get(socketId);
-        if (!player || !player.alive) return;
-
-        player.input = input;
-    }
-
-    update(deltaTime) {
-        const dt = deltaTime / 1000; // Convert to seconds
-
-        // Update players
-        for (const [socketId, player] of this.players) {
-            if (!player.alive) {
-                player.respawnTimer -= deltaTime;
-                if (player.respawnTimer <= 0) {
-                    this.respawnPlayer(player);
+            // Check vs obstacles
+            for (const obs of this.obstacles) {
+                if (this.checkCircleRect(x, y, this.tankSize / 2 + 10, obs)) {
+                    safe = false;
+                    break;
                 }
-                continue;
             }
 
-            this.updatePlayer(player, dt);
-        }
-
-        // Update projectiles
-        this.projectiles = this.projectiles.filter(proj => {
-            proj.x += proj.vx * dt;
-            proj.y += proj.vy * dt;
-            proj.lifetime -= deltaTime;
-
-            // Check collision with players
-            for (const [socketId, player] of this.players) {
-                if (!player.alive || player.socketId === proj.ownerId) continue;
-
-                if (this.checkCollision(proj, player)) {
-                    if (!player.shielded) {
-                        player.health -= proj.damage;
-                        if (player.health <= 0) {
-                            this.killPlayer(player, proj.ownerId);
-                        }
+            // Check vs other players
+            if (safe) {
+                for (const id in this.players) {
+                    const p = this.players[id];
+                    const dist = Math.hypot(p.x - x, p.y - y);
+                    if (dist < this.tankSize * 2) {
+                        safe = false;
+                        break;
                     }
-                    return false; // Remove projectile
                 }
             }
-
-            // Check collision with obstacles
-            for (const obstacle of this.obstacles) {
-                if (this.checkRectCollision(proj, obstacle)) {
-                    return false;
-                }
-            }
-
-            return proj.lifetime > 0 &&
-                proj.x >= 0 && proj.x <= GAME_CONFIG.ARENA_WIDTH &&
-                proj.y >= 0 && proj.y <= GAME_CONFIG.ARENA_HEIGHT;
-        });
-
-        // Update powerup timers
-        for (const [socketId, player] of this.players) {
-            if (player.weaponTimer > 0) {
-                player.weaponTimer -= deltaTime;
-                if (player.weaponTimer <= 0) {
-                    player.weapon = WEAPON_TYPES.NORMAL;
-                }
-            }
-
-            if (player.shieldTimer > 0) {
-                player.shieldTimer -= deltaTime;
-                if (player.shieldTimer <= 0) {
-                    player.shielded = false;
-                }
-            }
+            attempts++;
         }
-
-        // Check powerup collection
-        this.powerups = this.powerups.filter(powerup => {
-            if (powerup.collected) return false;
-
-            for (const [socketId, player] of this.players) {
-                if (!player.alive) continue;
-
-                const dx = player.x - powerup.x;
-                const dy = player.y - powerup.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                if (distance < GAME_CONFIG.PLANE_SIZE) {
-                    this.applyPowerup(player, powerup.type);
-                    return false;
-                }
-            }
-
-            return true;
-        });
+        return { x, y };
     }
 
-    updatePlayer(player, dt) {
-        const input = player.input || {};
-
-        // Calculate thrust
-        let thrust = 0;
-        if (input.accelerate) thrust += GAME_CONFIG.ACCELERATION;
-        if (input.decelerate) thrust -= GAME_CONFIG.ACCELERATION;
-
-        // Calculate current speed
-        const speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
-
-        // Turn
-        if (input.turnUp) player.angle -= GAME_CONFIG.TURN_SPEED * dt;
-        if (input.turnDown) player.angle += GAME_CONFIG.TURN_SPEED * dt;
-
-        // Apply thrust in direction of angle
-        const thrustX = Math.cos(player.angle) * thrust * dt;
-        const thrustY = Math.sin(player.angle) * thrust * dt;
-
-        player.vx += thrustX;
-        player.vy += thrustY;
-
-        // Apply gravity (always downward)
-        player.vy += GAME_CONFIG.GRAVITY * dt;
-
-        // Apply drag
-        const dragForce = GAME_CONFIG.DRAG_COEFFICIENT * speed;
-        if (speed > 0) {
-            player.vx -= (player.vx / speed) * dragForce * dt;
-            player.vy -= (player.vy / speed) * dragForce * dt;
-        }
-
-        // Apply lift (counteracts gravity when moving fast enough)
-        if (speed > GAME_CONFIG.STALL_SPEED) {
-            const liftForce = GAME_CONFIG.LIFT_COEFFICIENT * speed;
-            player.vy -= liftForce * dt;
-        }
-
-        // Limit speed
-        const newSpeed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
-        if (newSpeed > GAME_CONFIG.MAX_SPEED) {
-            player.vx = (player.vx / newSpeed) * GAME_CONFIG.MAX_SPEED;
-            player.vy = (player.vy / newSpeed) * GAME_CONFIG.MAX_SPEED;
-        }
-
-        // Update position
-        player.x += player.vx * dt;
-        player.y += player.vy * dt;
-
-        // Check arena bounds
-        if (player.x < 0 || player.x > GAME_CONFIG.ARENA_WIDTH ||
-            player.y < 0 || player.y > GAME_CONFIG.ARENA_HEIGHT) {
-            player.score = Math.max(0, player.score - 1);
-            this.killPlayer(player, null);
-            return;
-        }
-
-        // Check collision with obstacles
-        for (const obstacle of this.obstacles) {
-            if (this.checkRectCollision(player, obstacle)) {
-                player.score = Math.max(0, player.score - 1);
-                this.killPlayer(player, null);
-                return;
-            }
-        }
-
-        // Check collision with other players
-        for (const [otherSocketId, otherPlayer] of this.players) {
-            if (otherPlayer.socketId === player.socketId || !otherPlayer.alive) continue;
-
-            const dx = player.x - otherPlayer.x;
-            const dy = player.y - otherPlayer.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance < GAME_CONFIG.PLANE_SIZE) {
-                // Both players crash
-                player.score = Math.max(0, player.score - 1);
-                otherPlayer.score = Math.max(0, otherPlayer.score - 1);
-                this.killPlayer(player, null);
-                this.killPlayer(otherPlayer, null);
-                return;
-            }
-        }
-
-        // Handle firing
-        if (input.fire) {
-            const now = Date.now();
-            const fireRate = player.weapon === WEAPON_TYPES.RAPID_FIRE ?
-                GAME_CONFIG.FIRE_RATE / 2 : GAME_CONFIG.FIRE_RATE;
-
-            if (now - player.lastFireTime > fireRate) {
-                this.fire(player);
-                player.lastFireTime = now;
-            }
-        }
+    removePlayer(id) {
+        delete this.players[id];
     }
 
-    fire(player) {
-        const angle = player.angle;
-        const speed = GAME_CONFIG.BULLET_SPEED;
-
-        if (player.weapon === WEAPON_TYPES.TRIPLE_SHOT) {
-            // Fire three bullets in a spread
-            for (let i = -1; i <= 1; i++) {
-                const spreadAngle = angle + (i * 0.2);
-                this.createProjectile(player, spreadAngle, speed, 20);
-            }
-        } else if (player.weapon === WEAPON_TYPES.MISSILE) {
-            this.createProjectile(player, angle, speed * 0.8, 50);
-        } else {
-            this.createProjectile(player, angle, speed, 20);
-        }
+    getRandomColor() {
+        const colors = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#9b59b6', '#1abc9c'];
+        return colors[Math.floor(Math.random() * colors.length)];
     }
 
-    createProjectile(player, angle, speed, damage) {
-        this.projectiles.push({
-            id: this.nextProjectileId++,
-            x: player.x + Math.cos(angle) * GAME_CONFIG.PLANE_SIZE,
-            y: player.y + Math.sin(angle) * GAME_CONFIG.PLANE_SIZE,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
-            ownerId: player.socketId,
-            lifetime: GAME_CONFIG.BULLET_LIFETIME,
-            damage,
-            type: player.weapon,
+    handleInput(id, input) {
+        const player = this.players[id];
+        if (!player) return;
+
+        // Rotation
+        if (input.left) player.angle -= this.rotationSpeed;
+        if (input.right) player.angle += this.rotationSpeed;
+
+        // Movement
+        let speed = 0;
+        if (input.up) speed = this.tankSpeed;
+        if (input.down) speed = -this.tankSpeed;
+
+        if (speed !== 0) {
+            const dx = Math.cos(player.angle) * speed;
+            const dy = Math.sin(player.angle) * speed;
+
+            const newX = player.x + dx;
+            const newY = player.y + dy;
+
+            if (!this.checkCollision(newX, newY, player.radius)) {
+                player.x = newX;
+                player.y = newY;
+            }
+        }
+
+        // Shooting
+        if (input.space && player.cooldown <= 0) {
+            this.fireShell(player);
+            player.cooldown = 30;
+        }
+
+        if (player.cooldown > 0) player.cooldown--;
+    }
+
+    fireShell(player) {
+        const vx = Math.cos(player.angle) * this.shellSpeed;
+        const vy = Math.sin(player.angle) * this.shellSpeed;
+        // Start slightly outside tank
+        const sx = player.x + Math.cos(player.angle) * (player.radius + 5);
+        const sy = player.y + Math.sin(player.angle) * (player.radius + 5);
+
+        this.shells.push({
+            x: sx,
+            y: sy,
+            vx: vx,
+            vy: vy,
+            radius: this.shellSize,
+            ownerId: player.id,
+            ricochets: 0
         });
     }
 
-    applyPowerup(player, type) {
-        switch (type) {
-            case POWERUP_TYPES.TRIPLE_SHOT:
-                player.weapon = WEAPON_TYPES.TRIPLE_SHOT;
-                player.weaponTimer = 15000;
-                break;
-            case POWERUP_TYPES.RAPID_FIRE:
-                player.weapon = WEAPON_TYPES.RAPID_FIRE;
-                player.weaponTimer = 15000;
-                break;
-            case POWERUP_TYPES.MISSILE:
-                player.weapon = WEAPON_TYPES.MISSILE;
-                player.weaponTimer = 15000;
-                break;
-            case POWERUP_TYPES.SHIELD:
-                player.shielded = true;
-                player.shieldTimer = 10000;
-                break;
+    checkCollision(x, y, radius) {
+        for (const obs of this.obstacles) {
+            if (this.checkCircleRect(x, y, radius, obs)) return true;
         }
+        return false;
     }
 
-    killPlayer(player, killerId) {
-        player.alive = false;
-        player.health = 0;
-        player.respawnTimer = GAME_CONFIG.RESPAWN_TIME;
+    checkCircleRect(cx, cy, cr, rect) {
+        const closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+        const closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+        const distanceX = cx - closestX;
+        const distanceY = cy - closestY;
+        return (distanceX * distanceX + distanceY * distanceY) < (cr * cr);
+    }
 
-        if (killerId) {
-            const killer = this.players.get(killerId);
-            if (killer) {
-                killer.score += 1;
+    update() {
+        for (let i = this.shells.length - 1; i >= 0; i--) {
+            const shell = this.shells[i];
+            shell.x += shell.vx;
+            shell.y += shell.vy;
+
+            // Wall Collision
+            let hitWall = false;
+            for (const obs of this.obstacles) {
+                if (this.checkCircleRect(shell.x, shell.y, shell.radius, obs)) {
+                    hitWall = true;
+                    // Resolve collision / Ricochet
+                    // Determine hit side
+                    const prevX = shell.x - shell.vx;
+                    const prevY = shell.y - shell.vy;
+
+                    // Check X-axis first
+                    if (this.checkCircleRect(shell.x, prevY, shell.radius, obs)) {
+                        shell.vx = -shell.vx;
+                        shell.y = prevY; // Backtrack
+                    } else {
+                        shell.vy = -shell.vy;
+                        shell.x = prevX; // Backtrack
+                    }
+                    break; // Only bounce off one wall at a time
+                }
+            }
+
+            if (hitWall) {
+                shell.ricochets++;
+                if (shell.ricochets > this.maxRicochets) {
+                    this.shells.splice(i, 1);
+                    continue;
+                }
+            }
+
+            // Player Collision
+            for (const id in this.players) {
+                const player = this.players[id];
+                // Allow self-damage if ricocheted
+                if (shell.ownerId === player.id && shell.ricochets === 0) continue;
+
+                const dist = Math.hypot(shell.x - player.x, shell.y - player.y);
+                if (dist < shell.radius + player.radius) {
+                    // Kill
+                    if (this.players[shell.ownerId]) {
+                        // If self-kill, maybe -1? For now just point.
+                        this.players[shell.ownerId].score++;
+                    }
+
+                    // Respawn
+                    const spawn = this.getSafeSpawn();
+                    player.x = spawn.x;
+                    player.y = spawn.y;
+                    player.angle = Math.random() * Math.PI * 2;
+
+                    this.shells.splice(i, 1);
+                    break;
+                }
             }
         }
-    }
-
-    respawnPlayer(player) {
-        player.alive = true;
-        player.health = GAME_CONFIG.PLAYER_HEALTH;
-        player.x = Math.random() * GAME_CONFIG.ARENA_WIDTH;
-        player.y = GAME_CONFIG.ARENA_HEIGHT / 2;
-        player.vx = 150; // Start with forward velocity
-        player.vy = 0;
-        player.angle = 0; // Face right
-        player.weapon = WEAPON_TYPES.NORMAL;
-        player.shielded = false;
-    }
-
-    checkCollision(obj1, obj2) {
-        const dx = obj1.x - obj2.x;
-        const dy = obj1.y - obj2.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < GAME_CONFIG.PLANE_SIZE / 2;
-    }
-
-    checkRectCollision(obj, rect) {
-        return obj.x > rect.x && obj.x < rect.x + rect.width &&
-            obj.y > rect.y && obj.y < rect.y + rect.height;
     }
 
     getState() {
         return {
-            players: Array.from(this.players.values()).map(p => ({
-                id: p.id,
-                socketId: p.socketId,
-                username: p.username,
-                x: p.x,
-                y: p.y,
-                angle: p.angle,
-                health: p.health,
-                score: p.score,
-                alive: p.alive,
-                weapon: p.weapon,
-                shielded: p.shielded,
-            })),
-            projectiles: this.projectiles,
-            powerups: this.powerups,
-            obstacles: this.obstacles,
+            players: this.players,
+            shells: this.shells,
+            obstacles: this.obstacles
         };
     }
 }
+
+module.exports = Game;
