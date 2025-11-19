@@ -1,4 +1,6 @@
-const socket = io();
+const socket = io({
+    path: '/api/socketio'
+});
 
 const loginScreen = document.getElementById('login-screen');
 const gameContainer = document.getElementById('game-container');
