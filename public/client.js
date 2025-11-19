@@ -138,11 +138,11 @@ function updateGame(state) {
             group.add(body);
 
             // Turret
-            const turretGeo = new THREE.CylinderGeometry(5, 5, 20, 8);
+            const turretGeo = new THREE.CylinderGeometry(5, 5, 40, 8);
             const turretMat = new THREE.MeshLambertMaterial({ color: 0x2c3e50 });
             const turret = new THREE.Mesh(turretGeo, turretMat);
             turret.rotation.z = Math.PI / 2;
-            turret.position.set(0, 0, 15); // Centered on tank, but we rotate it
+            turret.position.set(10, 0, 15); // Centered on tank, but we rotate it
             turret.name = 'turret';
 
             // Turret pivot group to make rotation easier if needed, 

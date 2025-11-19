@@ -140,8 +140,8 @@ class Game {
         const vy = Math.sin(absTurretAngle) * this.shellSpeed;
 
         // Start slightly outside tank turret
-        const sx = player.x + Math.cos(absTurretAngle) * (player.radius + 10);
-        const sy = player.y + Math.sin(absTurretAngle) * (player.radius + 10);
+        const sx = player.x + Math.cos(absTurretAngle) * (player.radius + 20);
+        const sy = player.y + Math.sin(absTurretAngle) * (player.radius + 20);
 
         this.shells.push({
             x: sx,
