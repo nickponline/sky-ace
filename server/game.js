@@ -56,9 +56,9 @@ export class Game {
             username,
             x: Math.random() * GAME_CONFIG.ARENA_WIDTH,
             y: GAME_CONFIG.ARENA_HEIGHT / 2,
-            vx: 100,
+            vx: 150, // Start with forward velocity
             vy: 0,
-            angle: 0,
+            angle: 0, // Face right (0 radians)
             health: GAME_CONFIG.PLAYER_HEALTH,
             score: 0,
             alive: true,
@@ -339,9 +339,9 @@ export class Game {
         player.health = GAME_CONFIG.PLAYER_HEALTH;
         player.x = Math.random() * GAME_CONFIG.ARENA_WIDTH;
         player.y = GAME_CONFIG.ARENA_HEIGHT / 2;
-        player.vx = 100;
+        player.vx = 150; // Start with forward velocity
         player.vy = 0;
-        player.angle = 0;
+        player.angle = 0; // Face right
         player.weapon = WEAPON_TYPES.NORMAL;
         player.shielded = false;
     }

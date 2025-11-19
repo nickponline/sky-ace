@@ -131,6 +131,9 @@ function joinGame(username) {
         // Update HUD
         document.getElementById('player-name').textContent = username;
 
+        // Create arena boundaries
+        createArenaBoundaries();
+
         // Start game loop
         animate();
     });
@@ -152,19 +155,19 @@ function setupInputHandlers() {
         switch (e.key.toLowerCase()) {
             case 'w':
             case 'arrowup':
-                input.turnUp = true;
+                input.accelerate = true;
                 break;
             case 's':
             case 'arrowdown':
-                input.turnDown = true;
+                input.decelerate = true;
                 break;
             case 'a':
             case 'arrowleft':
-                input.decelerate = true;
+                input.turnUp = true;
                 break;
             case 'd':
             case 'arrowright':
-                input.accelerate = true;
+                input.turnDown = true;
                 break;
             case ' ':
                 input.fire = true;
@@ -179,19 +182,19 @@ function setupInputHandlers() {
         switch (e.key.toLowerCase()) {
             case 'w':
             case 'arrowup':
-                input.turnUp = false;
+                input.accelerate = false;
                 break;
             case 's':
             case 'arrowdown':
-                input.turnDown = false;
+                input.decelerate = false;
                 break;
             case 'a':
             case 'arrowleft':
-                input.decelerate = false;
+                input.turnUp = false;
                 break;
             case 'd':
             case 'arrowright':
-                input.accelerate = false;
+                input.turnDown = false;
                 break;
             case ' ':
                 input.fire = false;

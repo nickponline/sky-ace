@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -45,8 +46,13 @@
     }
 
     @keyframes glow {
-      from { text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00; }
-      to { text-shadow: 0 0 20px #00ff00, 0 0 30px #00ff00, 0 0 40px #00ff00; }
+      from {
+        text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00;
+      }
+
+      to {
+        text-shadow: 0 0 20px #00ff00, 0 0 30px #00ff00, 0 0 40px #00ff00;
+      }
     }
 
     #login-form {
@@ -184,8 +190,9 @@
       font-weight: bold;
     }
   </style>
-  <script type="module" crossorigin src="/assets/index-r86p0wtZ.js"></script>
+  <script type="module" crossorigin src="/assets/index-vLTqZiFL.js"></script>
 </head>
+
 <body>
   <div id="login-screen">
     <h1>SKY ACE</h1>
@@ -199,7 +206,9 @@
     <div id="hud">
       <div>PILOT: <span id="player-name">-</span></div>
       <div>HEALTH: <span id="player-health">100</span></div>
-      <div class="health-bar"><div class="health-fill" id="health-fill" style="width: 100%"></div></div>
+      <div class="health-bar">
+        <div class="health-fill" id="health-fill" style="width: 100%"></div>
+      </div>
       <div>SCORE: <span id="player-score">0</span></div>
       <div>WEAPON: <span id="player-weapon" class="weapon-indicator">NORMAL</span></div>
       <div id="shield-status" style="display: none;" class="shield-indicator">🛡️ SHIELD ACTIVE</div>
@@ -212,13 +221,14 @@
 
     <div id="controls">
       <h4>CONTROLS</h4>
-      <div>W/↑ - Turn Up</div>
-      <div>S/↓ - Turn Down</div>
-      <div>A/← - Decelerate</div>
-      <div>D/→ - Accelerate</div>
+      <div>W/↑ - Accelerate</div>
+      <div>S/↓ - Decelerate</div>
+      <div>A/← - Pitch Up (CCW)</div>
+      <div>D/→ - Pitch Down (CW)</div>
       <div>SPACE - Fire</div>
     </div>
   </div>
 
 </body>
+
 </html>
