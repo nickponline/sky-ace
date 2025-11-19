@@ -112,6 +112,65 @@ function createStarfield() {
     scene.add(stars);
 }
 
+function createArenaBoundaries() {
+    if (!gameConfig) return;
+
+    const width = gameConfig.ARENA_WIDTH;
+    const height = gameConfig.ARENA_HEIGHT;
+    const thickness = 20;
+
+    // Create striped texture for borders
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+
+    // Draw diagonal yellow/black stripes
+    const stripeWidth = 16;
+    for (let i = -64; i < 128; i += stripeWidth * 2) {
+        ctx.fillStyle = '#ffff00';
+        ctx.fillRect(i, 0, stripeWidth, 64);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(i + stripeWidth, 0, stripeWidth, 64);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.NearestFilter;
+
+    const material = new THREE.MeshBasicMaterial({ map: texture });
+
+    // Top border
+    const topGeometry = new THREE.PlaneGeometry(width, thickness);
+    const topBorder = new THREE.Mesh(topGeometry, material.clone());
+    topBorder.position.set(width / 2, height + thickness / 2, -10);
+    topBorder.material.map.repeat.set(width / 64, 1);
+    scene.add(topBorder);
+
+    // Bottom border
+    const bottomGeometry = new THREE.PlaneGeometry(width, thickness);
+    const bottomBorder = new THREE.Mesh(bottomGeometry, material.clone());
+    bottomBorder.position.set(width / 2, -thickness / 2, -10);
+    bottomBorder.material.map.repeat.set(width / 64, 1);
+    scene.add(bottomBorder);
+
+    // Left border
+    const leftGeometry = new THREE.PlaneGeometry(thickness, height);
+    const leftBorder = new THREE.Mesh(leftGeometry, material.clone());
+    leftBorder.position.set(-thickness / 2, height / 2, -10);
+    leftBorder.material.map.repeat.set(1, height / 64);
+    scene.add(leftBorder);
+
+    // Right border
+    const rightGeometry = new THREE.PlaneGeometry(thickness, height);
+    const rightBorder = new THREE.Mesh(rightGeometry, material.clone());
+    rightBorder.position.set(width + thickness / 2, height / 2, -10);
+    rightBorder.material.map.repeat.set(1, height / 64);
+    scene.add(rightBorder);
+}
+
 function joinGame(username) {
     // Connect to server
     socket = io(window.location.origin);
