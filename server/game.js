@@ -54,7 +54,8 @@ class Game {
             color: this.getRandomColor(),
             score: 0,
             cooldown: 0,
-            maxCooldown: 30
+            maxCooldown: 30,
+            input: { up: false, down: false, left: false, right: false, space: false, shift: false }
         };
     }
 
@@ -103,35 +104,7 @@ class Game {
     handleInput(id, input) {
         const player = this.players[id];
         if (!player) return;
-
-        // Rotation Acceleration
-        // If Shift is held, rotate turret relative to body
-        // If Shift is NOT held, rotate body
-        if (input.shift) {
-            if (input.left) player.vTurretRel -= this.ROTATION_ACCEL;
-            if (input.right) player.vTurretRel += this.ROTATION_ACCEL;
-        } else {
-            if (input.left) player.vAngle -= this.ROTATION_ACCEL;
-            if (input.right) player.vAngle += this.ROTATION_ACCEL;
-        }
-
-        // Movement Acceleration
-        if (input.up) {
-            player.vx += Math.cos(player.angle) * this.ACCELERATION;
-            player.vy += Math.sin(player.angle) * this.ACCELERATION;
-        }
-        if (input.down) {
-            player.vx -= Math.cos(player.angle) * this.ACCELERATION;
-            player.vy -= Math.sin(player.angle) * this.ACCELERATION;
-        }
-
-        // Shooting
-        if (input.space && player.cooldown <= 0) {
-            this.fireShell(player);
-            player.cooldown = player.maxCooldown;
-        }
-
-        if (player.cooldown > 0) player.cooldown--;
+        player.input = input;
     }
 
     fireShell(player) {
@@ -176,6 +149,36 @@ class Game {
         // Update Players
         for (const id in this.players) {
             const p = this.players[id];
+            const input = p.input;
+
+            // Rotation Acceleration
+            // If Shift is held, rotate turret relative to body
+            // If Shift is NOT held, rotate body
+            if (input.shift) {
+                if (input.left) p.vTurretRel -= this.ROTATION_ACCEL;
+                if (input.right) p.vTurretRel += this.ROTATION_ACCEL;
+            } else {
+                if (input.left) p.vAngle -= this.ROTATION_ACCEL;
+                if (input.right) p.vAngle += this.ROTATION_ACCEL;
+            }
+
+            // Movement Acceleration
+            if (input.up) {
+                p.vx += Math.cos(p.angle) * this.ACCELERATION;
+                p.vy += Math.sin(p.angle) * this.ACCELERATION;
+            }
+            if (input.down) {
+                p.vx -= Math.cos(p.angle) * this.ACCELERATION;
+                p.vy -= Math.sin(p.angle) * this.ACCELERATION;
+            }
+
+            // Shooting
+            if (input.space && p.cooldown <= 0) {
+                this.fireShell(p);
+                p.cooldown = p.maxCooldown;
+            }
+
+            if (p.cooldown > 0) p.cooldown--;
 
             // Apply Friction
             p.vx *= this.FRICTION;

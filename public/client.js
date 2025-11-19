@@ -139,21 +139,12 @@ function updateGame(state) {
 
             // Turret
             const turretGeo = new THREE.CylinderGeometry(5, 5, 40, 8);
+            turretGeo.translate(0, 20, 0); // Pivot at bottom
             const turretMat = new THREE.MeshLambertMaterial({ color: 0x2c3e50 });
             const turret = new THREE.Mesh(turretGeo, turretMat);
-            turret.rotation.z = Math.PI / 2;
-            turret.position.set(10, 0, 15); // Centered on tank, but we rotate it
+            turret.rotation.z = -Math.PI / 2; // Point right
+            turret.position.set(0, 0, 15); // Centered on tank
             turret.name = 'turret';
-
-            // Turret pivot group to make rotation easier if needed, 
-            // but since we have absolute angle, we can just rotate the mesh?
-            // Cylinder is vertical by default. rotated Z=PI/2 makes it horizontal along X.
-            // We want it to point along the angle.
-
-            // Actually, let's just add the turret to the group and rotate it independently?
-            // No, the group rotates with the body.
-            // So we need to rotate the turret relative to the body.
-            // pData.turretRelAngle is available.
 
             group.add(turret);
 
@@ -169,14 +160,9 @@ function updateGame(state) {
         // Update Turret Rotation (Relative)
         const turret = playerGroup.getObjectByName('turret');
         if (turret) {
-            // The turret mesh is rotated PI/2 to lay flat. 
-            // Its "forward" is Y axis in local space if we didn't rotate it?
-            // Cylinder default is Y-up. Rotated Z=90deg -> X-right.
-            // So 0 rotation = pointing Right.
-            // We want it to point at turretRelAngle.
-            // Since the group is already rotated by pData.angle, we just need to rotate turret by pData.turretRelAngle.
-            // But we need to account for the initial mesh rotation.
-            turret.rotation.z = (Math.PI / 2) + pData.turretRelAngle;
+            // Turret base rotation is -PI/2 (pointing right).
+            // We want to add the relative angle.
+            turret.rotation.z = -Math.PI / 2 + pData.turretRelAngle;
         }
     }
 
