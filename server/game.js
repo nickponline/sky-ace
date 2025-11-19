@@ -3,14 +3,24 @@ class Game {
         this.players = {};
         this.shells = [];
         this.obstacles = [];
+        this.events = []; // For explosions, etc.
         this.width = 800;
         this.height = 600;
-        this.shellSpeed = 8;
-        this.tankSpeed = 3;
-        this.rotationSpeed = 0.05;
-        this.tankSize = 30; // Treated as diameter for collision
-        this.shellSize = 5; // Radius
+
+        // Physics Constants
+        this.shellSpeed = 10; // Faster shells
+        this.tankSize = 30;
+        this.shellSize = 5;
         this.maxRicochets = 2;
+
+        // Tuned for faster gameplay
+        this.ACCELERATION = 0.4;
+        this.MAX_SPEED = 6;
+        this.FRICTION = 0.92;
+
+        this.ROTATION_ACCEL = 0.01;
+        this.MAX_ROTATION_SPEED = 0.12;
+        this.ROTATION_FRICTION = 0.90;
 
         this.initObstacles();
     }
@@ -35,10 +45,16 @@ class Game {
             x: spawn.x,
             y: spawn.y,
             angle: Math.random() * Math.PI * 2,
+            turretRelAngle: 0, // Relative to body
+            vx: 0,
+            vy: 0,
+            vAngle: 0,
+            vTurretRel: 0,
             radius: this.tankSize / 2,
             color: this.getRandomColor(),
             score: 0,
-            cooldown: 0
+            cooldown: 0,
+            maxCooldown: 30
         };
     }
 
@@ -88,43 +104,44 @@ class Game {
         const player = this.players[id];
         if (!player) return;
 
-        // Rotation
-        if (input.left) player.angle -= this.rotationSpeed;
-        if (input.right) player.angle += this.rotationSpeed;
+        // Rotation Acceleration
+        // If Shift is held, rotate turret relative to body
+        // If Shift is NOT held, rotate body
+        if (input.shift) {
+            if (input.left) player.vTurretRel -= this.ROTATION_ACCEL;
+            if (input.right) player.vTurretRel += this.ROTATION_ACCEL;
+        } else {
+            if (input.left) player.vAngle -= this.ROTATION_ACCEL;
+            if (input.right) player.vAngle += this.ROTATION_ACCEL;
+        }
 
-        // Movement
-        let speed = 0;
-        if (input.up) speed = this.tankSpeed;
-        if (input.down) speed = -this.tankSpeed;
-
-        if (speed !== 0) {
-            const dx = Math.cos(player.angle) * speed;
-            const dy = Math.sin(player.angle) * speed;
-
-            const newX = player.x + dx;
-            const newY = player.y + dy;
-
-            if (!this.checkCollision(newX, newY, player.radius)) {
-                player.x = newX;
-                player.y = newY;
-            }
+        // Movement Acceleration
+        if (input.up) {
+            player.vx += Math.cos(player.angle) * this.ACCELERATION;
+            player.vy += Math.sin(player.angle) * this.ACCELERATION;
+        }
+        if (input.down) {
+            player.vx -= Math.cos(player.angle) * this.ACCELERATION;
+            player.vy -= Math.sin(player.angle) * this.ACCELERATION;
         }
 
         // Shooting
         if (input.space && player.cooldown <= 0) {
             this.fireShell(player);
-            player.cooldown = 30;
+            player.cooldown = player.maxCooldown;
         }
 
         if (player.cooldown > 0) player.cooldown--;
     }
 
     fireShell(player) {
-        const vx = Math.cos(player.angle) * this.shellSpeed;
-        const vy = Math.sin(player.angle) * this.shellSpeed;
-        // Start slightly outside tank
-        const sx = player.x + Math.cos(player.angle) * (player.radius + 5);
-        const sy = player.y + Math.sin(player.angle) * (player.radius + 5);
+        const absTurretAngle = player.angle + player.turretRelAngle;
+        const vx = Math.cos(absTurretAngle) * this.shellSpeed;
+        const vy = Math.sin(absTurretAngle) * this.shellSpeed;
+
+        // Start slightly outside tank turret
+        const sx = player.x + Math.cos(absTurretAngle) * (player.radius + 10);
+        const sy = player.y + Math.sin(absTurretAngle) * (player.radius + 10);
 
         this.shells.push({
             x: sx,
@@ -135,6 +152,9 @@ class Game {
             ownerId: player.id,
             ricochets: 0
         });
+
+        // Muzzle flash event?
+        // this.events.push({ type: 'flash', x: sx, y: sy });
     }
 
     checkCollision(x, y, radius) {
@@ -153,6 +173,58 @@ class Game {
     }
 
     update() {
+        // Update Players
+        for (const id in this.players) {
+            const p = this.players[id];
+
+            // Apply Friction
+            p.vx *= this.FRICTION;
+            p.vy *= this.FRICTION;
+            p.vAngle *= this.ROTATION_FRICTION;
+            p.vTurretRel *= this.ROTATION_FRICTION;
+
+            // Cap Velocity
+            const speed = Math.hypot(p.vx, p.vy);
+            if (speed > this.MAX_SPEED) {
+                const scale = this.MAX_SPEED / speed;
+                p.vx *= scale;
+                p.vy *= scale;
+            }
+
+            // Cap Rotation
+            if (Math.abs(p.vAngle) > this.MAX_ROTATION_SPEED) {
+                p.vAngle = Math.sign(p.vAngle) * this.MAX_ROTATION_SPEED;
+            }
+            if (Math.abs(p.vTurretRel) > this.MAX_ROTATION_SPEED) {
+                p.vTurretRel = Math.sign(p.vTurretRel) * this.MAX_ROTATION_SPEED;
+            }
+
+            // Apply Velocity
+            p.angle += p.vAngle;
+            p.turretRelAngle += p.vTurretRel;
+
+            const newX = p.x + p.vx;
+            const newY = p.y + p.vy;
+
+            // Collision Check
+            if (!this.checkCollision(newX, newY, p.radius)) {
+                p.x = newX;
+                p.y = newY;
+            } else {
+                if (!this.checkCollision(newX, p.y, p.radius)) {
+                    p.x = newX;
+                    p.vy *= 0.5;
+                } else if (!this.checkCollision(p.x, newY, p.radius)) {
+                    p.y = newY;
+                    p.vx *= 0.5;
+                } else {
+                    p.vx = 0;
+                    p.vy = 0;
+                }
+            }
+        }
+
+        // Update Shells
         for (let i = this.shells.length - 1; i >= 0; i--) {
             const shell = this.shells[i];
             shell.x += shell.vx;
@@ -163,20 +235,22 @@ class Game {
             for (const obs of this.obstacles) {
                 if (this.checkCircleRect(shell.x, shell.y, shell.radius, obs)) {
                     hitWall = true;
+
+                    // Event for wall hit
+                    this.events.push({ type: 'hit', x: shell.x, y: shell.y, color: 0xbdc3c7 });
+
                     // Resolve collision / Ricochet
-                    // Determine hit side
                     const prevX = shell.x - shell.vx;
                     const prevY = shell.y - shell.vy;
 
-                    // Check X-axis first
                     if (this.checkCircleRect(shell.x, prevY, shell.radius, obs)) {
                         shell.vx = -shell.vx;
-                        shell.y = prevY; // Backtrack
+                        shell.y = prevY;
                     } else {
                         shell.vy = -shell.vy;
-                        shell.x = prevX; // Backtrack
+                        shell.x = prevX;
                     }
-                    break; // Only bounce off one wall at a time
+                    break;
                 }
             }
 
@@ -191,22 +265,28 @@ class Game {
             // Player Collision
             for (const id in this.players) {
                 const player = this.players[id];
-                // Allow self-damage if ricocheted
                 if (shell.ownerId === player.id && shell.ricochets === 0) continue;
 
                 const dist = Math.hypot(shell.x - player.x, shell.y - player.y);
                 if (dist < shell.radius + player.radius) {
                     // Kill
                     if (this.players[shell.ownerId]) {
-                        // If self-kill, maybe -1? For now just point.
                         this.players[shell.ownerId].score++;
                     }
+
+                    // Explosion Event
+                    this.events.push({ type: 'explosion', x: player.x, y: player.y, color: player.color });
 
                     // Respawn
                     const spawn = this.getSafeSpawn();
                     player.x = spawn.x;
                     player.y = spawn.y;
                     player.angle = Math.random() * Math.PI * 2;
+                    player.turretRelAngle = 0;
+                    player.vx = 0;
+                    player.vy = 0;
+                    player.vAngle = 0;
+                    player.vTurretRel = 0;
 
                     this.shells.splice(i, 1);
                     break;
@@ -216,11 +296,14 @@ class Game {
     }
 
     getState() {
-        return {
+        const state = {
             players: this.players,
             shells: this.shells,
-            obstacles: this.obstacles
+            obstacles: this.obstacles,
+            events: this.events
         };
+        this.events = []; // Clear events after sending
+        return state;
     }
 }
 

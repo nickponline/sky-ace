@@ -81,7 +81,7 @@ socket.on('state', (state) => {
 });
 
 // Input handling
-const keys = { up: false, down: false, left: false, right: false, space: false };
+const keys = { up: false, down: false, left: false, right: false, space: false, shift: false };
 
 document.addEventListener('keydown', (e) => {
     switch (e.code) {
@@ -90,6 +90,7 @@ document.addEventListener('keydown', (e) => {
         case 'KeyA': case 'ArrowLeft': keys.left = true; break;
         case 'KeyD': case 'ArrowRight': keys.right = true; break;
         case 'Space': keys.space = true; break;
+        case 'ShiftLeft': case 'ShiftRight': keys.shift = true; break;
     }
     socket.emit('input', keys);
 });
@@ -101,11 +102,23 @@ document.addEventListener('keyup', (e) => {
         case 'KeyA': case 'ArrowLeft': keys.left = false; break;
         case 'KeyD': case 'ArrowRight': keys.right = false; break;
         case 'Space': keys.space = false; break;
+        case 'ShiftLeft': case 'ShiftRight': keys.shift = false; break;
     }
     socket.emit('input', keys);
 });
 
 function updateGame(state) {
+    // Handle Events
+    if (state.events) {
+        state.events.forEach(e => {
+            if (e.type === 'explosion') {
+                createExplosion(e.x, e.y, e.color, 10);
+            } else if (e.type === 'hit') {
+                createExplosion(e.x, e.y, e.color, 3); // Smaller hit effect
+            }
+        });
+    }
+
     // Update Players
     const activeIds = new Set();
     for (const id in state.players) {
@@ -121,6 +134,7 @@ function updateGame(state) {
             const bodyMat = new THREE.MeshLambertMaterial({ color: pData.color });
             const body = new THREE.Mesh(bodyGeo, bodyMat);
             body.position.z = 7.5;
+            body.name = 'body';
             group.add(body);
 
             // Turret
@@ -128,7 +142,19 @@ function updateGame(state) {
             const turretMat = new THREE.MeshLambertMaterial({ color: 0x2c3e50 });
             const turret = new THREE.Mesh(turretGeo, turretMat);
             turret.rotation.z = Math.PI / 2;
-            turret.position.set(10, 0, 15);
+            turret.position.set(0, 0, 15); // Centered on tank, but we rotate it
+            turret.name = 'turret';
+
+            // Turret pivot group to make rotation easier if needed, 
+            // but since we have absolute angle, we can just rotate the mesh?
+            // Cylinder is vertical by default. rotated Z=PI/2 makes it horizontal along X.
+            // We want it to point along the angle.
+
+            // Actually, let's just add the turret to the group and rotate it independently?
+            // No, the group rotates with the body.
+            // So we need to rotate the turret relative to the body.
+            // pData.turretRelAngle is available.
+
             group.add(turret);
 
             scene.add(group);
@@ -136,9 +162,22 @@ function updateGame(state) {
         }
 
         // Update position/rotation
-        const player = players[id];
-        player.position.set(pData.x, pData.y, 0);
-        player.rotation.z = pData.angle;
+        const playerGroup = players[id];
+        playerGroup.position.set(pData.x, pData.y, 0);
+        playerGroup.rotation.z = pData.angle;
+
+        // Update Turret Rotation (Relative)
+        const turret = playerGroup.getObjectByName('turret');
+        if (turret) {
+            // The turret mesh is rotated PI/2 to lay flat. 
+            // Its "forward" is Y axis in local space if we didn't rotate it?
+            // Cylinder default is Y-up. Rotated Z=90deg -> X-right.
+            // So 0 rotation = pointing Right.
+            // We want it to point at turretRelAngle.
+            // Since the group is already rotated by pData.angle, we just need to rotate turret by pData.turretRelAngle.
+            // But we need to account for the initial mesh rotation.
+            turret.rotation.z = (Math.PI / 2) + pData.turretRelAngle;
+        }
     }
 
     // Remove disconnected players
@@ -146,17 +185,11 @@ function updateGame(state) {
         if (!activeIds.has(id)) {
             scene.remove(players[id]);
             delete players[id];
-            createExplosion(players[id].position.x, players[id].position.y, 0xe74c3c);
+            // createExplosion(players[id].position.x, players[id].position.y, 0xe74c3c); // Handled by event now
         }
     }
 
     // Update Shells
-    // Recreate shells every frame for simplicity (or pool them for performance)
-    // Since we don't have IDs for shells easily, let's just clear and redraw or try to match?
-    // Matching is hard without IDs. Let's clear and re-add. 
-    // Optimization: Pool meshes.
-
-    // Remove old shells
     shells.forEach(mesh => scene.remove(mesh));
     shells = [];
 
@@ -170,8 +203,8 @@ function updateGame(state) {
     });
 }
 
-function createExplosion(x, y, color) {
-    for (let i = 0; i < 10; i++) {
+function createExplosion(x, y, color, count = 10) {
+    for (let i = 0; i < count; i++) {
         const geo = new THREE.BoxGeometry(2, 2, 2);
         const mat = new THREE.MeshBasicMaterial({ color: color });
         const part = new THREE.Mesh(geo, mat);
@@ -182,7 +215,7 @@ function createExplosion(x, y, color) {
         part.userData = {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            life: 30
+            life: 30 + Math.random() * 20
         };
 
         scene.add(part);
@@ -210,7 +243,18 @@ function updateScoreboard(playersData) {
     const sorted = Object.values(playersData).sort((a, b) => b.score - a.score);
     sorted.forEach(p => {
         const li = document.createElement('li');
-        li.textContent = `${p.name}: ${p.score}`;
+
+        // Cooldown indicator
+        const cdPercent = Math.max(0, (p.maxCooldown - p.cooldown) / p.maxCooldown * 100);
+        const ready = p.cooldown <= 0 ? 'READY' : 'RELOADING';
+        const color = p.cooldown <= 0 ? '#2ecc71' : '#e74c3c';
+
+        li.innerHTML = `
+            <span style="display:inline-block; width: 10px; height: 10px; background: ${p.color}; margin-right: 5px;"></span>
+            ${p.name}: ${p.score} 
+            <span style="font-size: 0.8em; color: ${color}; margin-left: 10px;">[${ready}]</span>
+        `;
+
         if (p.id === myId) {
             li.style.fontWeight = 'bold';
             li.style.color = '#f1c40f';
